@@ -1,81 +1,62 @@
 # Rota Vital · Atividade individual 1 (Serverless)
 
-Função serverless que recebe uma requisição do Rota Vital (POST `/guias`) e devolve a guia de transporte de bolsas de sangue.
+Função serverless que recebe uma requisição do Rota Vital (POST /guias) e devolve a guia de transporte de bolsas de sangue.
 
 - **Disciplina:** Infraestrutura de Software · ADS · CESAR School · 2026.2
 - **Estudante:** Kelly Priscilla de Siqueira Melo
-- **Caminho escolhido:** **A — AWS SAM CLI local** (Python 3.12, Docker, sem conta na nuvem)
-- **Vídeo (até 3 min):** []
-
-## Estrutura
-
-```
-template.yaml          # SAM: função, rota POST /guias, Timeout em Globals
-hello_world/app.py     # handler da função
-events/pedido.json     # evento API Gateway (pedido válido)
-events/demorar.json    # evento com demorar=true (teste do timeout)
-scripts/experimentos.sh# chamadas curl dos Passos 4 e 5
-evidencias/            # prints dos comandos e saídas
-```
+- **Caminho escolhido:** A (AWS SAM CLI local, Python 3.12), executado no GitHub Codespaces porque o computador que eu uso não permite instalar programas.
+- **Vídeo:** []
 
 ## Como rodar
 
-Pré-requisitos: Docker em execução, AWS SAM CLI (`sam --version`), Python 3.12. No Windows, usar Git Bash ou WSL.
+Pré-requisitos: Docker, AWS SAM CLI e Python 3.12 (no Codespaces: `pip install aws-sam-cli`).
 
 ```bash
 sam build
-
-# Passo 3 - invocação com evento (rodar 2x e anotar o tempo)
-sam local invoke -e events/pedido.json
-
-# Passo 4 - gatilho HTTP
-sam local start-api
-curl -X POST http://127.0.0.1:3000/guias -H "Content-Type: application/json" \
-  -d '{"requisicaoId":"R-002","hospital":"H-Caruaru"}'
-# repetir 3x; depois parar e subir com:
-sam local start-api --warm-containers LAZY
-
-# Passo 5 - limite de tempo (Timeout 3 s -> depois 10 s, com novo sam build)
-curl -X POST http://127.0.0.1:3000/guias -H "Content-Type: application/json" \
-  -d '{"requisicaoId":"R-003","demorar":true}'
+sam local invoke -e events/pedido.json          # invocação com evento (rodei 2x)
+sam local start-api                             # gatilho HTTP
+bash experimentos.sh                            # chamadas curl (em outro terminal)
+sam local start-api --warm-containers LAZY      # reaproveitando o container
 ```
 
-`scripts/experimentos.sh` faz as chamadas curl em sequência.
+Para o Passo 5, o `Timeout` do `template.yaml` começou em 3 s e depois foi para 10 s (com `sam build` entre eles). O evento `events/demorar.json` e o último curl do `experimentos.sh` usam `demorar: true`.
 
 ## Resultados medidos
 
 | Experimento | Resultado |
 |---|---|
-| `sam local invoke` #1 | [PREENCHER: ex. Duration/tempo total] |
-| `sam local invoke` #2 | [PREENCHER] |
-| `start-api` sem warm (3 chamadas) | `invocacaoNesteAmbiente` = [1, 1, 1] (conferir) |
-| `start-api --warm-containers LAZY` (3 chamadas) | `invocacaoNesteAmbiente` = [1, 2, 3] (conferir) |
-| `demorar=true`, Timeout 3 s | [PREENCHER: mensagem de timeout / HTTP 502] |
-| `demorar=true`, Timeout 10 s | [PREENCHER: HTTP 201 após ~5 s] |
+| `sam local invoke` #1 | Init 0,03 ms · Duration 45,22 ms · Billed 46 ms · contador 1 |
+| `sam local invoke` #2 | Init 0,04 ms · Duration 44,26 ms · Billed 45 ms · contador 1 |
+| `start-api` sem warm (3 chamadas) | contador 1, 1, 1 (0,81 s, 0,60 s e 0,65 s no curl) |
+| `start-api --warm-containers LAZY` | contador 1, 2, 3 · Duration de ~1 ms nas chamadas reaproveitadas |
+| `demorar=true`, Timeout 3 s | `Function 'GuiaFunction' timed out after 3 seconds`, Duration 3000 ms, HTTP 502 em 3,93 s |
+| `demorar=true`, Timeout 10 s | HTTP 201 depois de ~5 s |
+| Sem `requisicaoId` | HTTP 400 |
+
+Evidências na pasta `evidencias/`: `invoke-1.png`, `invoke-2.png`, `start-api-sem-warm.png`, `start-api-warm.png`, `start-api-warm-servidor.png`, `timeout-3s.png`, `timeout-10s.png`.
 
 ## Respostas
 
 **1. Por que a primeira invocação demorou mais que a segunda? O que acontece na fase de Init?**
-Na primeira invocação não existe ambiente de execução pronto, então acontece um *cold start*: o serviço cria o ambiente (no SAM local, um container Docker), baixa/monta o código, inicia o runtime Python e executa o código fora do handler (a fase **Init**, onde `import json, time` e `contador = 0` rodam). Só depois o handler é executado (fase Invoke). Na segunda invocação, se o ambiente for reaproveitado, o Init já foi feito e só o Invoke acontece, por isso é mais rápida. [Complemente com seus tempos medidos. Obs.: no `sam local invoke` cada chamada pode criar um container novo, então os tempos podem ser parecidos; comente o que você observou.]
+Na teoria, a primeira invocação precisa criar o ambiente de execução (cold start): o serviço prepara o container, carrega o código, inicia o runtime Python e executa o código que está fora do handler, como os `import` e o `contador = 0`. Isso é a fase de Init. Depois vem a fase de Invoke, que roda o handler. Se o ambiente for reaproveitado, o Init não se repete e só o Invoke acontece.
+Na prática, no `sam local invoke` os dois tempos ficaram praticamente iguais (45,22 ms e 44,26 ms) e o contador foi 1 nas duas, porque o comando sobe um container novo a cada execução, então as duas foram "frias". A diferença apareceu com `--warm-containers`: as chamadas com o container já em execução levaram cerca de 1 ms (Billed 2 ms), contra ~45 ms com container novo.
 
 **2. O que o campo `invocacaoNesteAmbiente` mostrou com e sem `--warm-containers`? O que isso diz sobre guardar estado numa variável global?**
-Sem `--warm-containers`, cada requisição subiu um container novo, e o campo mostrou sempre 1. Com `--warm-containers LAZY`, o container foi mantido e o contador subiu (1, 2, 3...). Isso mostra que a variável global só sobrevive se o ambiente for reaproveitado, e isso não é garantido: o provedor pode destruir o ambiente a qualquer momento, e requisições simultâneas usam ambientes diferentes, cada um com seu próprio contador. Portanto não se deve guardar estado importante (estoque, status de requisição) em variável global; ele deve ficar em um serviço externo (banco de dados, cache, fila). A variável global serve no máximo como cache descartável (ex.: conexão com o banco).
+Sem `--warm-containers`, mostrou 1, 1, 1: cada requisição teve um container novo, e a variável global voltou a zero. Com `--warm-containers LAZY`, mostrou 1, 2, 3: o container foi mantido e o contador acumulou. Isso mostra que a variável global só sobrevive se o ambiente for reaproveitado, e isso não é garantido: a nuvem pode encerrar o ambiente a qualquer hora, e várias requisições ao mesmo tempo usam ambientes diferentes, cada um com seu contador. Por isso dados importantes (estoque de bolsas, status de requisições) devem ficar num serviço externo, como um banco de dados. A variável global só serve como cache que pode ser perdido sem problema.
 
 **3. O que aconteceu com `demorar = true`? Qual é o tempo máximo de uma execução no Lambda e o que fazer com um trabalho mais longo?**
-A função dorme 5 s, mas o Timeout do template é 3 s, então a execução foi interrompida pela plataforma: [PREENCHER com a mensagem exata, ex. "Function 'GuiaFunction' timed out after 3 seconds", e o retorno HTTP 502/erro ao cliente]. Com Timeout 10 s, a função terminou e devolveu 201 após ~5 s. O máximo do Lambda é **15 minutos (900 s)**. Trabalhos mais longos devem ser quebrados em etapas menores (ex.: Step Functions orquestrando várias funções, ou fila SQS com várias execuções curtas) ou migrados para um serviço sem esse limite, como containers (ECS/Fargate) ou AWS Batch.
+A função dorme 5 s, mas o Timeout do template era 3 s. A plataforma interrompeu a execução (`Function 'GuiaFunction' timed out after 3 seconds`, Duration 3000 ms) e o cliente recebeu HTTP 502 `Internal server error`. Ao aumentar o Timeout para 10 s e rodar `sam build` de novo, a função terminou e devolveu 201 depois de uns 5 s. O tempo máximo de uma execução no Lambda é de 15 minutos (900 s). Trabalhos mais longos devem ser divididos em etapas menores (por exemplo, com Step Functions ou uma fila SQS) ou rodar em um serviço sem esse limite, como containers (ECS/Fargate) ou AWS Batch.
 
 **4. Custo de 1 milhão de execuções com 128 MB e 100 ms (us-east-1)**
-- Requisições: 1.000.000 × US$ 0,20 / 1.000.000 = **US$ 0,20**
-- Computação: 128 MB = 0,125 GB; 0,125 GB × 0,1 s = 0,0125 GB-s por execução
-  → 1.000.000 × 0,0125 = 12.500 GB-s
-  → 12.500 × US$ 0,0000166667 = **US$ 0,2083**
-- **Total ≈ US$ 0,41** por milhão de execuções (sem considerar a faixa gratuita, que cobriria isso integralmente).
+- Requisições: 1.000.000 × US$ 0,20 / 1.000.000 = US$ 0,20
+- Computação: 128 MB = 0,125 GB; 0,125 GB × 0,1 s = 0,0125 GB-s por execução; × 1.000.000 = 12.500 GB-s; × US$ 0,0000166667 = US$ 0,2083
+- **Total ≈ US$ 0,41** (sem contar a faixa gratuita, que cobriria isso por completo).
 
-**5. Em que parte do Rota Vital uma função assim faria sentido e em qual não faria?**
-Faz sentido em tarefas curtas, sem estado e acionadas por evento ou com demanda irregular: gerar a guia de transporte quando uma requisição é aprovada, validar os dados de um pedido, enviar notificação ao hospital quando uma bolsa muda de status, processar um evento de uma fila. Paga-se só quando há uso e escala sozinho. Não faria sentido onde há conexão ou estado contínuo, como o rastreamento em tempo real do veículo (conexões longas/WebSocket), ou onde o cold start de centenas de ms é inaceitável no caminho crítico de uma emergência sem alguma mitigação (ex.: concorrência provisionada). Também não é ideal para o armazenamento do estoque de bolsas em si, que deve ficar em um banco de dados, nem para processamentos que passam de 15 minutos. [Ajuste com os componentes reais do seu projeto em grupo.]
+**5. Em que parte do Rota Vital uma função assim faria sentido, e em qual não faria?**
+Faz sentido em tarefas curtas, sem estado e acionadas por evento ou com demanda irregular, como gerar a guia de transporte quando uma requisição é aprovada, validar os dados de um pedido ou notificar o hospital quando uma bolsa muda de status. Paga-se só pelo que se usa e escala sozinho. Não faz sentido onde é preciso manter conexão ou estado, como no rastreamento em tempo real do veículo, nem para guardar o estoque de bolsas (isso é papel do banco de dados). Também exige cuidado no caminho crítico de uma emergência, onde o cold start pode atrasar a resposta, e em processos que passem de 15 minutos.
 
 ## Uso de IA
 
 - **Ferramenta:** Claude (Anthropic).
-- **Finalidade:** gerar o esqueleto do projeto (template.yaml, eventos, script de curl) e um rascunho do README com as respostas.
-- **Como validei:** [PREENCHER com o que você de fato fez: rodei todos os comandos localmente, conferi os tempos e saídas, reescrevi as respostas com minhas palavras, comparei com a documentação da AWS (ciclo de vida do ambiente, cotas e preços do Lambda)].
+- **Finalidade:** gerar o esqueleto do projeto (template.yaml, eventos de teste, script de curl), um rascunho do README e me ajudar a resolver erros durante a execução (arquivos que não subiram para o repositório, Codespaces).
+- **Como validei:** [ESCREVA O QUE VOCÊ FEZ DE VERDADE: ex. rodei todos os comandos no Codespaces, conferi as saídas e os tempos nos prints, reescrevi as respostas com minhas palavras, conferi o cálculo de custo com os preços do enunciado e o limite de 15 minutos na documentação do Lambda].
