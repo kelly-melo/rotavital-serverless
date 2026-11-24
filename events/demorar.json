@@ -1,0 +1,9 @@
+{
+  "body": "{\"requisicaoId\":\"R-003\",\"demorar\":true}",
+  "resource": "/{proxy+}",
+  "path": "/guias",
+  "httpMethod": "POST",
+  "isBase64Encoded": false,
+  "headers": {"Content-Type": "application/json"},
+  "requestContext": {"resourcePath": "/{proxy+}", "httpMethod": "POST", "path": "/guias"}
+}
