@@ -5,7 +5,7 @@ Função serverless que recebe uma requisição do Rota Vital (POST /guias) e de
 - **Disciplina:** Infraestrutura de Software · ADS · CESAR School · 2026.2
 - **Estudante:** Kelly Priscilla de Siqueira Melo
 - **Caminho escolhido:** A (AWS SAM CLI local, Python 3.12), executado no GitHub Codespaces porque o computador que eu uso não permite instalar programas.
-- **Vídeo:** []
+- **Vídeo (até 3 min):** https://youtu.be/W1fCnxdwmpc
 
 ## Como rodar
 
