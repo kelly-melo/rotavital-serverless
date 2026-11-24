@@ -3,9 +3,9 @@
 Função serverless que recebe uma requisição do Rota Vital (POST `/guias`) e devolve a guia de transporte de bolsas de sangue.
 
 - **Disciplina:** Infraestrutura de Software · ADS · CESAR School · 2026.2
-- **Estudante:** [SEU NOME]
+- **Estudante:** Kelly Priscilla de Siqueira Melo
 - **Caminho escolhido:** **A — AWS SAM CLI local** (Python 3.12, Docker, sem conta na nuvem)
-- **Vídeo (até 3 min):** [LINK DO VÍDEO]
+- **Vídeo (até 3 min):** []
 
 ## Estrutura
 
